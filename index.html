@@ -1388,7 +1388,7 @@ function initGSAP(){
 /* ═══════════════════════════════════════════
    WISHES
 ═══════════════════════════════════════════ */
-function addWish(){
+/*function addWish(){
   const name=document.getElementById('wn').value.trim();
   const txt=document.getElementById('wt').value.trim();
   if(!name||!txt){alert('Please fill in your name and wish 💫');return;}
@@ -1404,7 +1404,9 @@ function renderWishes(){
   const list=JSON.parse(localStorage.getItem('bubuWishes')||'[]');
   if(!list.length){wall.innerHTML='<div class="wempty">Be the first to wish PASI happy birthday! 🌸</div>';return;}
   wall.innerHTML=list.map(w=>`<div class="wcard"><div class="wfrom">✨ ${w.name}</div><div class="wtxt">${w.txt}</div><div class="wtime">${w.time}</div></div>`).join('');
-}
+}*/
+
+
 
 /* ═══════════════════════════════════════════
    GAME LOCK
@@ -1606,5 +1608,81 @@ window.addEventListener('load',()=>{
   },1800);
 });
 </script>
+
+/* ═══════════════════════════════════════════
+   WISHES
+═══════════════════════════════════════════ */
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-analytics.js";
+  import { getDatabase, ref, push, onValue } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
+
+  // Your exact Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyDOHWKFD4U6wltuqcf2RFZ8jP6JWON8p2I",
+    authDomain: "birthday-surprise-f96f9.firebaseapp.com",
+    databaseURL: "https://birthday-surprise-f96f9-default-rtdb.firebaseio.com",
+    projectId: "birthday-surprise-f96f9",
+    storageBucket: "birthday-surprise-f96f9.firebasestorage.app",
+    messagingSenderId: "611254605522",
+    appId: "1:611254605522:web:5e8a885e23f916670fbf0b",
+    measurementId: "G-DLXQZV0XJ1"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+  const db = getDatabase(app);
+
+  // 1. Function to Add a Wish to the Cloud
+  window.addWish = function() {
+    const name = document.getElementById('wn').value.trim();
+    const txt = document.getElementById('wt').value.trim();
+    if(!name || !txt) { alert('Please fill in your name and wish 💫'); return; }
+    
+    // Change button text while sending
+    const btn = document.querySelector('.btn-s');
+    btn.textContent = "Sending... ✨";
+
+    // Push to Firebase Realtime Database
+    push(ref(db, 'wishes'), {
+      name: name,
+      txt: txt,
+      time: new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'})
+    }).then(() => {
+      document.getElementById('wn').value = '';
+      document.getElementById('wt').value = '';
+      btn.textContent = "Send My Wish 💫";
+    }).catch((error) => {
+      alert("Oops! Could not send wish. Make sure your Firebase rules are set to true!");
+      console.error(error);
+      btn.textContent = "Send My Wish 💫";
+    });
+  };
+
+  // 2. Real-time Listener to Render Wishes on the Screen
+  onValue(ref(db, 'wishes'), (snapshot) => {
+    const wall = document.getElementById('wwall');
+    const data = snapshot.val();
+    
+    if (!data) {
+      wall.innerHTML = '<div class="wempty">Be the first to wish BUBU happy birthday! 🌸</div>';
+      return;
+    }
+
+    // Convert Firebase object to an array and reverse it so newest wishes are at the top
+    const wishesArray = Object.values(data).reverse();
+    
+    wall.innerHTML = wishesArray.map(w => 
+      `<div class="wcard">
+        <div class="wfrom">✨ ${w.name}</div>
+        <div class="wtxt">${w.txt}</div>
+        <div class="wtime">${w.time}</div>
+      </div>`
+    ).join('');
+  });
+</script>
+
 </body>
 </html>
