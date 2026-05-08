@@ -618,11 +618,19 @@ const GIFTS = [
 /* ═══════════════════════════════════════════
    STATE
 ═══════════════════════════════════════════ */
-let gamePts = parseInt(localStorage.getItem('bubuPts')||'0');
-let completedLevels = JSON.parse(localStorage.getItem('bubuLvls')||'[]');
-let gameUnlocked = localStorage.getItem('bubuGameUnlocked')==='true';
-let surpriseUnlocked = localStorage.getItem('bubuSurpriseUnlocked')==='true';
+// We initialize them empty, then load them from Firebase on boot
+let gamePts = 0;
+let completedLevels = [];
+let gameUnlocked = false;
+let surpriseUnlocked = false;
 let pwAttempts = 0;
+
+// Helper function to sync current state to Firebase
+function saveStateToDB() {
+  if (window.updateBubuProgress) {
+    window.updateBubuProgress(gamePts, completedLevels, gameUnlocked, surpriseUnlocked);
+  }
+}
 
 /* ═══════════════════════════════════════════
    THREE.JS BACKGROUND
@@ -1124,8 +1132,7 @@ const G = {
       if(!completedLevels.includes(this.level)){
         completedLevels.push(this.level);
         gamePts+=lvl.pts;
-        localStorage.setItem('bubuLvls',JSON.stringify(completedLevels));
-        localStorage.setItem('bubuPts',String(gamePts));
+        saveStateToDB();
         document.getElementById('g-pts').textContent=gamePts;
         renderGifts();
         showCelebPop('+'+lvl.pts+' ⭐');
@@ -1393,36 +1400,13 @@ function initGSAP(){
 }
 
 /* ═══════════════════════════════════════════
-   WISHES
-═══════════════════════════════════════════ */
-/*function addWish(){
-  const name=document.getElementById('wn').value.trim();
-  const txt=document.getElementById('wt').value.trim();
-  if(!name||!txt){alert('Please fill in your name and wish 💫');return;}
-  const list=JSON.parse(localStorage.getItem('bubuWishes')||'[]');
-  list.unshift({name,txt,time:new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})});
-  localStorage.setItem('bubuWishes',JSON.stringify(list));
-  document.getElementById('wn').value='';
-  document.getElementById('wt').value='';
-  renderWishes();
-}
-function renderWishes(){
-  const wall=document.getElementById('wwall');
-  const list=JSON.parse(localStorage.getItem('bubuWishes')||'[]');
-  if(!list.length){wall.innerHTML='<div class="wempty">Be the first to wish PASI happy birthday! 🌸</div>';return;}
-  wall.innerHTML=list.map(w=>`<div class="wcard"><div class="wfrom">✨ ${w.name}</div><div class="wtxt">${w.txt}</div><div class="wtime">${w.time}</div></div>`).join('');
-}*/
-
-
-
-/* ═══════════════════════════════════════════
    GAME LOCK
 ═══════════════════════════════════════════ */
 function unlockGame(){
   const v=document.getElementById('gpw-inp').value.trim();
   if(v===CFG.gamePw){
     gameUnlocked=true;
-    localStorage.setItem('bubuGameUnlocked','true');
+    saveStateToDB();
     document.getElementById('gpw-gate').style.display='none';
     document.getElementById('game-wrap').style.display='flex';
     document.getElementById('game-wrap').style.flexDirection='column';
@@ -1493,7 +1477,7 @@ function checkSurprisePw(){
   const v=document.getElementById('spw-inp').value.trim().toLowerCase();
   if(v===CFG.surprisePw){
     surpriseUnlocked=true;
-    localStorage.setItem('bubuSurpriseUnlocked','true');
+    saveStateToDB();
     revealSurprise(true);
   } else {
     const inp=document.getElementById('spw-inp');
@@ -1580,35 +1564,47 @@ function launchConfetti(){
 /* ═══════════════════════════════════════════
    BOOT
 ═══════════════════════════════════════════ */
-window.addEventListener('load',()=>{
+window.addEventListener('load', async () => {
   initBG();
   initPtcls();
- // renderWishes();
-  renderGifts();
   checkDate();
   tickCD();
   setInterval(tickCD,1000);
-
-  // Game unlock state
-  if(gameUnlocked){
-    document.getElementById('gpw-gate').style.display='none';
-    const gw=document.getElementById('game-wrap');
-    gw.style.display='flex';
-    gw.style.flexDirection='column';
-    gw.style.alignItems='center';
-    // Init game after a slight delay to ensure DOM layout
-    setTimeout(()=>{G.init();},200);
-  }
-
-  // Surprise already unlocked
-  if(surpriseUnlocked){
-    setTimeout(()=>initCake(),500);
-    renderReasons();
-  }
-
   initGSAP();
 
-  setTimeout(()=>{
+  // LOAD PROGRESS FROM FIREBASE
+  // Give the module script a split second to attach the window function
+  setTimeout(async () => {
+    if (window.loadBubuProgress) {
+      const data = await window.loadBubuProgress();
+      if (data) {
+        gamePts = data.pts || 0;
+        completedLevels = data.levels || [];
+        gameUnlocked = data.gameUnlocked || false;
+        surpriseUnlocked = data.surpriseUnlocked || false;
+      }
+    }
+
+    renderGifts(); // Render gifts based on the loaded levels
+
+// Game unlock state
+    if(gameUnlocked){
+      document.getElementById('gpw-gate').style.display='none';
+      const gw=document.getElementById('game-wrap');
+      gw.style.display='flex';
+      gw.style.flexDirection='column';
+      gw.style.alignItems='center';
+      setTimeout(()=>{G.init();},200);
+    }
+
+// Surprise already unlocked
+    if(surpriseUnlocked){
+      setTimeout(()=>initCake(),500);
+      renderReasons();
+    }
+  }, 300);
+
+setTimeout(()=>{
     const l=document.getElementById('loader');
     l.style.opacity='0';
     setTimeout(()=>l.style.display='none',900);
@@ -1623,7 +1619,7 @@ window.addEventListener('load',()=>{
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
   import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-analytics.js";
-  import { getDatabase, ref, push, onValue } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
+  import { getDatabase, ref, push, onValue, set, get } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js";
 
   // Your exact Firebase configuration
   const firebaseConfig = {
@@ -1689,6 +1685,31 @@ window.addEventListener('load',()=>{
       </div>`
     ).join('');
   });
+
+  // Function to update BUBU's progress in Firebase
+window.updateBubuProgress = function(pts, levels, gameUnlocked, surpriseUnlocked) {
+  set(ref(db, 'bubu_progress'), {
+    pts: pts,
+    levels: levels,
+    gameUnlocked: gameUnlocked,
+    surpriseUnlocked: surpriseUnlocked
+  }).catch((error) => console.error("Error saving progress:", error));
+};
+
+// Function to load BUBU's progress when the page starts
+window.loadBubuProgress = async function() {
+  try {
+    const snapshot = await get(ref(db, 'bubu_progress'));
+    if (snapshot.exists()) {
+      return snapshot.val();
+    } else {
+      return null; // No progress saved yet
+    }
+  } catch (error) {
+    console.error("Error loading progress:", error);
+    return null;
+  }
+};
 </script>
 
 </body>
